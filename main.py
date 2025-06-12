@@ -12,35 +12,34 @@ def load_data():
 
 df = load_data()
 
-st.title("학생 습관과 학업 성취도 분석")
+st.title("📊 학생 습관과 학업 성취도 분석")
 
 # 사이드바 필터
-st.sidebar.header("필터")
+st.sidebar.header("🔎 필터")
 selected_major = st.sidebar.multiselect("전공 선택", options=df["major"].unique(), default=df["major"].unique())
 selected_gender = st.sidebar.multiselect("성별 선택", options=df["gender"].unique(), default=df["gender"].unique())
 
 filtered_df = df[(df["major"].isin(selected_major)) & (df["gender"].isin(selected_gender))]
 
-st.subheader("공부 시간 vs 시험 점수")
-fig1, ax1 = plt.subplots()
-sns.scatterplot(data=filtered_df, x="study_hours_per_day", y="exam_score", hue="gender", ax=ax1)
-st.pyplot(fig1)
+# 분석할 변수 선택
+st.subheader("변수별 학업 성취도 시각화")
 
-st.subheader("수면 시간 vs 시험 점수")
-fig2, ax2 = plt.subplots()
-sns.scatterplot(data=filtered_df, x="sleep_hours", y="exam_score", hue="gender", ax=ax2)
-st.pyplot(fig2)
+# 학습 습관/요인 변수 목록 자동 추출 (수치형 + 범주형 일부)
+target_col = "exam_score"
+exclude_cols = ["student_id", "exam_score", "major", "gender"]
+variables = [col for col in df.columns if col not in exclude_cols]
 
-st.subheader("SNS 사용 시간 vs 시험 점수")
-fig3, ax3 = plt.subplots()
-sns.scatterplot(data=filtered_df, x="social_media_hours", y="exam_score", hue="gender", ax=ax3)
-st.pyplot(fig3)
+selected_var = st.selectbox("비교할 변수 선택", variables)
 
-st.subheader("학습 환경별 평균 시험 점수")
-avg_scores = filtered_df.groupby("study_environment")["exam_score"].mean().sort_values()
-st.bar_chart(avg_scores)
+# 시각화
+if pd.api.types.is_numeric_dtype(df[selected_var]):
+    st.write(f"📈 **{selected_var}** vs **시험 점수 (exam_score)**")
+    fig, ax = plt.subplots()
+    sns.scatterplot(data=filtered_df, x=selected_var, y="exam_score", hue="gender", ax=ax)
+    st.pyplot(fig)
+else:
+    st.write(f"📊 **{selected_var}**별 평균 시험 점수")
+    grouped = filtered_df.groupby(selected_var)["exam_score"].mean().sort_values()
+    st.bar_chart(grouped)
 
-# 데이터 확인
-with st.expander("원본 데이터 보기"):
-    st.dataframe(filtered_df)
-
+# 상관계수 히트맵 옵션

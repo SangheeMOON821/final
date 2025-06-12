@@ -25,3 +25,14 @@ if uploaded_files:
                 sheet_name = sanitize_sheet_name(uploaded_file.name.replace('.xlsx', '').replace('.xls', ''))
                 df.to_excel(writer, sheet_name=sheet_name, index=False)
             except Exception as e:
+                st.error(f"{uploaded_file.name} 읽기 실패: {e}")
+    output.seek(0)  # 저장 후 스트림의 시작으로 이동
+
+    st.success(f"{len(uploaded_files)}개의 파일이 하나의 엑셀 파일로 시트 병합되었습니다!")
+
+    st.download_button(
+        label="엑셀로 다운로드",
+        data=output,
+        file_name="시트별_병합된_파일.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )

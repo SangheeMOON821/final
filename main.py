@@ -2,44 +2,66 @@
 
 import streamlit as st
 import pandas as pd
-import matplotlib.pyplot as plt
-import seaborn as sns
+from sklearn.linear_model import LinearRegression
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import LabelEncoder
 
-# 데이터 불러오기
+# 데이터 로드
 @st.cache_data
 def load_data():
     return pd.read_csv("enhanced_student_habits_performance_dataset.csv")
 
 df = load_data()
 
-st.title("📊 학생 습관과 학업 성취도 분석")
+st.title("📈 습관 조절을 통한 학업 성취도 예측")
 
-# 사이드바 필터
-st.sidebar.header("🔎 필터")
-selected_major = st.sidebar.multiselect("전공 선택", options=df["major"].unique(), default=df["major"].unique())
-selected_gender = st.sidebar.multiselect("성별 선택", options=df["gender"].unique(), default=df["gender"].unique())
+# 사전 처리
+df_model = df.copy()
 
-filtered_df = df[(df["major"].isin(selected_major)) & (df["gender"].isin(selected_gender))]
+# 범주형 라벨 인코딩
+categorical_cols = df_model.select_dtypes(include="object").columns.tolist()
+label_encoders = {}
+for col in categorical_cols:
+    le = LabelEncoder()
+    df_model[col] = le.fit_transform(df_model[col])
+    label_encoders[col] = le
 
-# 분석할 변수 선택
-st.subheader("변수별 학업 성취도 시각화")
+# feature와 target 설정
+target = "exam_score"
+X = df_model.drop(columns=["student_id", target])
+y = df_model[target]
 
-# 학습 습관/요인 변수 목록 자동 추출 (수치형 + 범주형 일부)
-target_col = "exam_score"
-exclude_cols = ["student_id", "exam_score", "major", "gender"]
-variables = [col for col in df.columns if col not in exclude_cols]
+# 모델 학습
+model = LinearRegression()
+model.fit(X, y)
 
-selected_var = st.selectbox("비교할 변수 선택", variables)
+# 사용자 입력 UI
+st.sidebar.header("🔧 변수 조정 (모델 입력값)")
 
-# 시각화
-if pd.api.types.is_numeric_dtype(df[selected_var]):
-    st.write(f"📈 **{selected_var}** vs **시험 점수 (exam_score)**")
-    fig, ax = plt.subplots()
-    sns.scatterplot(data=filtered_df, x=selected_var, y="exam_score", hue="gender", ax=ax)
-    st.pyplot(fig)
-else:
-    st.write(f"📊 **{selected_var}**별 평균 시험 점수")
-    grouped = filtered_df.groupby(selected_var)["exam_score"].mean().sort_values()
-    st.bar_chart(grouped)
+input_data = {}
+for col in X.columns:
+    if df_model[col].dtype == "float64" or df_model[col].dtype == "int64":
+        min_val = float(df_model[col].min())
+        max_val = float(df_model[col].max())
+        mean_val = float(df_model[col].mean())
+        input_data[col] = st.sidebar.slider(col, min_value=min_val, max_value=max_val, value=mean_val)
+    else:
+        options = label_encoders[col].classes_.tolist()
+        selected_option = st.sidebar.selectbox(col, options)
+        input_data[col] = label_encoders[col].transform([selected_option])[0]
 
-# 상관계수 히트맵 옵션
+# 예측
+input_df = pd.DataFrame([input_data])
+predicted_score = model.predict(input_df)[0]
+
+st.subheader("🎯 예측된 시험 점수")
+st.metric(label="예측된 exam_score", value=f"{predicted_score:.2f} 점")
+
+# 회귀모델 중요 변수 시각화
+st.subheader("📊 회귀 계수(변수 영향도)")
+coef_df = pd.DataFrame({
+    "Feature": X.columns,
+    "Coefficient": model.coef_
+}).sort_values(by="Coefficient", key=abs, ascending=False)
+
+st.bar_chart(coef_df.set_index("Feature"))

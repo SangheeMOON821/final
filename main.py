@@ -1,5 +1,6 @@
 import streamlit as st
 import pandas as pd
+from io import BytesIO
 
 st.title("엑셀 파일 합치기")
 
@@ -14,7 +15,7 @@ if uploaded_files:
     for uploaded_file in uploaded_files:
         try:
             df = pd.read_excel(uploaded_file)
-            df["파일명"] = uploaded_file.name  # 어떤 파일에서 왔는지 추적용
+            df["파일명"] = uploaded_file.name
             dfs.append(df)
         except Exception as e:
             st.error(f"{uploaded_file.name} 읽기 실패: {e}")
@@ -24,12 +25,15 @@ if uploaded_files:
         st.success(f"{len(dfs)}개의 파일을 성공적으로 합쳤습니다!")
         st.dataframe(merged_df)
 
-        # 다운로드 링크 제공
-        @st.cache_data
-        def convert_df(df):
-            return df.to_excel(index=False, engine='openpyxl')
+        # 엑셀 다운로드용 BytesIO로 변환
+        def to_excel_bytes(df):
+            output = BytesIO()
+            with pd.ExcelWriter(output, engine='openpyxl') as writer:
+                df.to_excel(writer, index=False)
+            output.seek(0)
+            return output
 
-        excel_data = convert_df(merged_df)
+        excel_data = to_excel_bytes(merged_df)
         st.download_button(
             label="엑셀로 다운로드",
             data=excel_data,

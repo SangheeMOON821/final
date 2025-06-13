@@ -1,6 +1,7 @@
 import streamlit as st
 from io import BytesIO
 import re
+from datetime import datetime
 from openpyxl import load_workbook, Workbook
 from openpyxl.utils import get_column_letter
 from copy import copy
@@ -23,6 +24,9 @@ if uploaded_files:
     # 첫번째 파일명(확장자 제외)
     first_base = uploaded_files[0].name.rsplit('.', 1)[0]
     count = len(uploaded_files)
+    # 오늘 날짜 MM.DD 형식
+    date_str = datetime.now().strftime("%m.%d")
+
     # 새 워크북 생성, 기본 시트 제거
     target_wb = Workbook()
     target_wb.remove(target_wb.active)
@@ -36,10 +40,8 @@ if uploaded_files:
             tgt = target_wb.create_sheet(title=title)
 
             # 기본 행 높이/열 너비 복제
-            default_row_h = src.sheet_format.defaultRowHeight
-            default_col_w = src.sheet_format.defaultColWidth
-            tgt.sheet_format.defaultRowHeight = default_row_h
-            tgt.sheet_format.defaultColWidth = default_col_w
+            tgt.sheet_format.defaultRowHeight = src.sheet_format.defaultRowHeight
+            tgt.sheet_format.defaultColWidth  = src.sheet_format.defaultColWidth
 
             max_row = src.max_row
             max_col = src.max_column
@@ -52,7 +54,7 @@ if uploaded_files:
                 if src_dim and src_dim.width is not None:
                     tgt_dim.width = src_dim.width
                 else:
-                    tgt_dim.width = default_col_w
+                    tgt_dim.width = src.sheet_format.defaultColWidth
                 tgt_dim.hidden = src_dim.hidden if src_dim else False
                 tgt_dim.outlineLevel = src_dim.outlineLevel if src_dim else 0
                 tgt_dim.bestFit = src_dim.bestFit if src_dim else False
@@ -64,7 +66,7 @@ if uploaded_files:
                 if src_dim and src_dim.height is not None:
                     tgt_dim.height = src_dim.height
                 else:
-                    tgt_dim.height = default_row_h
+                    tgt_dim.height = src.sheet_format.defaultRowHeight
                 tgt_dim.hidden = src_dim.hidden if src_dim else False
                 tgt_dim.outlineLevel = src_dim.outlineLevel if src_dim else 0
 
@@ -94,7 +96,8 @@ if uploaded_files:
     target_wb.save(output)
     output.seek(0)
 
-    filename = f"{first_base} {count} (병합).xlsx"
+    # “첫번째파일명 파일수 (병합)_오늘날짜MM.DD.xlsx”
+    filename = f"{first_base} ({count}개 병합)_{date_str}.xlsx"
     st.success(f"{count}개의 파일이 완전 보존되어 병합되었습니다!")
     st.download_button(
         label="엑셀로 다운로드",

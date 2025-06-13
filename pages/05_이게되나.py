@@ -8,13 +8,27 @@ from sklearn.compose import ColumnTransformer
 @st.cache_data
 def load_data():
     df = pd.read_csv('enhanced_student_habits_performance_dataset.csv')
+    # 수치형 칼럼을 명시적으로 숫자형으로 변환
+    numeric_cols = [
+        'age', 'study_hours_per_day', 'social_media_hours', 'netflix_hours',
+        'attendance_percentage', 'sleep_hours', 'exercise_frequency',
+        'internet_quality', 'mental_health_rating', 'previous_gpa',
+        'semester', 'stress_level', 'social_activity', 'screen_time',
+        'parental_support_level', 'motivation_level', 'exam_anxiety_score',
+        'time_management_score'
+    ]
+    df[numeric_cols] = df[numeric_cols].apply(pd.to_numeric, errors='coerce')
     return df
 
 # 2) 캐시된 전처리 파이프라인 생성
 @st.cache_resource
 def create_preprocessor(df, numeric_features, categorical_features):
+    # 수치형, 범주형 값 타입 보정
+    df_copy = df[numeric_features + categorical_features].copy()
+    df_copy[numeric_features] = df_copy[numeric_features].apply(pd.to_numeric, errors='coerce')
+    df_copy[categorical_features] = df_copy[categorical_features].astype(str)
+
     num_transformer = StandardScaler()
-    # 최신 scikit-learn용 파라미터
     cat_transformer = OneHotEncoder(handle_unknown='ignore', sparse_output=False)
 
     preprocessor = ColumnTransformer(
@@ -24,13 +38,16 @@ def create_preprocessor(df, numeric_features, categorical_features):
         ]
     )
     # 전체 데이터로 fit
-    preprocessor.fit(df[numeric_features + categorical_features])
+    preprocessor.fit(df_copy)
     return preprocessor
 
 # 3) 전체 데이터 변환 결과 캐싱
 @st.cache_data
 def transform_dataset(df, preprocessor, feature_cols):
-    return preprocessor.transform(df[feature_cols])
+    # 타입 보정 후 transform
+    df_copy = df[feature_cols].copy()
+    df_copy[feature_cols] = df_copy[feature_cols].apply(lambda col: pd.to_numeric(col, errors='ignore') if col.name in preprocessor.transformers_[0][2] else col.astype(str))
+    return preprocessor.transform(df_copy)
 
 
 def main():
@@ -117,7 +134,7 @@ def main():
 
     # 5) 범주형 입력
     for feat in categorical_features:
-        options = df[feat].unique().tolist()
+        options = df[feat].dropna().unique().tolist()
         user_input[feat] = st.sidebar.selectbox(
             labels[feat],
             options
@@ -126,11 +143,14 @@ def main():
     # 6) 유사도 조회
     if st.sidebar.button('🔍 유사 학생 조회'):
         input_df = pd.DataFrame([user_input])
+        # 동일한 타입 보정
+        input_df[numeric_features] = input_df[numeric_features].apply(pd.to_numeric, errors='coerce')
+        input_df[categorical_features] = input_df[categorical_features].astype(str)
         X_input = preprocessor.transform(input_df[feature_cols])
 
         # 거리 계산
         distances = np.linalg.norm(X_all - X_input, axis=1)
-        idx = np.argmin(distances)
+        idx = np.nanargmin(distances)
         similar = df.iloc[idx]
 
         st.subheader('👤 가장 유사한 학생 정보')

@@ -12,3 +12,4 @@ pytube
 openai-whisper
 ffmpeg
 yt-dlp
+imageio-ffmpeg

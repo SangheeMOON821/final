@@ -5,3 +5,5 @@ seaborn
 openpyxl
 youtube-transcript-api
 python-pptx
+google-api-python-client 
+openai

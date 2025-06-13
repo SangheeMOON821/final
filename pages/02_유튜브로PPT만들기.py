@@ -9,16 +9,11 @@ import openai
 import re
 import tempfile
 import os
-from dotenv import load_dotenv  # ✅ dotenv 추가
 
-# ✅ .env 파일 로드
-load_dotenv()
+# ✅ 직접 입력된 API 키들 (보안 주의!)
+YOUTUBE_API_KEY = "AIzaSyCiOYEp0EsDCRl2xn5exfxpJyv78SJfIOQ"
+openai.api_key = "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"
 
-# ✅ 환경변수에서 API 키 불러오기
-YOUTUBE_API_KEY = os.getenv("AIzaSyCiOYEp0EsDCRl2xn5exfxpJyv78SJfIOQ")
-openai.api_key = os.getenv("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")
-
-# --------------------------------------
 def extract_video_id(url):
     regex = r"(?:v=|\/)([0-9A-Za-z_-]{11}).*"
     match = re.search(regex, url)
@@ -40,13 +35,15 @@ def get_video_metadata(video_id):
         youtube = build("youtube", "v3", developerKey=YOUTUBE_API_KEY)
         request = youtube.videos().list(part="snippet", id=video_id)
         response = request.execute()
-
         if not response["items"]:
             return None, None
         item = response["items"][0]["snippet"]
         return item["title"], item.get("description", "")
     except HttpError as e:
         st.error(f"[YouTube API Error] {e}")
+        return None, None
+    except Exception as e:
+        st.error(f"[기타 오류] {e}")
         return None, None
 
 def summarize_text(text, max_chars=800):
@@ -74,12 +71,10 @@ def summarize_with_gpt(text, lang="ko"):
         )
         return response.choices[0].message.content.strip()
     except Exception as e:
-        print(f"[GPT Error] {e}")
-        return "GPT 요약에 실패했습니다."
+        return f"GPT 요약 실패: {e}"
 
 def create_ppt(youtube_url, title, summaries):
     prs = Presentation()
-
     slide_layout = prs.slide_layouts[0]
     slide = prs.slides.add_slide(slide_layout)
     slide.shapes.title.text = title or "YouTube Summary Presentation"
@@ -95,7 +90,7 @@ def create_ppt(youtube_url, title, summaries):
     prs.save(tmp_file.name)
     return tmp_file.name
 
-# --------------------------------------
+# Streamlit UI
 st.set_page_config(page_title="유튜브 요약 PPT 생성기")
 st.title("🎞️ 유튜브 영상 요약 PPT 생성기")
 
@@ -114,7 +109,7 @@ if st.button("📄 PPT 만들기"):
     with st.spinner("1단계: 유튜브 영상 정보 확인 중..."):
         title, description = get_video_metadata(video_id)
         if title is None:
-            st.error("YouTube API 요청 실패 - API 키 확인 또는 영상 권한 확인 필요.")
+            st.error("YouTube API 요청 실패 - API 키가 잘못되었거나 영상이 비공개입니다.")
             st.stop()
 
     with st.spinner("2단계: 자막 정보 가져오는 중..."):

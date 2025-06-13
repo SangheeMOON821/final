@@ -1,10 +1,8 @@
-# streamlit_app.py
 import streamlit as st
 import pandas as pd
 import numpy as np
 from sklearn.preprocessing import StandardScaler, OneHotEncoder
 from sklearn.compose import ColumnTransformer
-from sklearn.pipeline import Pipeline
 
 # 1) 캐시된 데이터 로드
 @st.cache_data
@@ -16,7 +14,8 @@ def load_data():
 @st.cache_resource
 def create_preprocessor(df, numeric_features, categorical_features):
     num_transformer = StandardScaler()
-    cat_transformer = OneHotEncoder(handle_unknown='ignore', sparse=False)
+    # 최신 scikit-learn용 파라미터
+    cat_transformer = OneHotEncoder(handle_unknown='ignore', sparse_output=False)
 
     preprocessor = ColumnTransformer(
         transformers=[
@@ -33,13 +32,13 @@ def create_preprocessor(df, numeric_features, categorical_features):
 def transform_dataset(df, preprocessor, feature_cols):
     return preprocessor.transform(df[feature_cols])
 
+
 def main():
     st.title('📊 학업 성취도 유사도 기반 조회')
 
-    # --- 1) 데이터 및 파이프라인 준비 ---
+    # --- 데이터 및 파이프라인 준비 ---
     df = load_data()
 
-    # 사용할 변수 목록
     numeric_features = [
         'age', 'study_hours_per_day', 'social_media_hours', 'netflix_hours',
         'attendance_percentage', 'sleep_hours', 'exercise_frequency',
@@ -59,7 +58,7 @@ def main():
     preprocessor = create_preprocessor(df, numeric_features, categorical_features)
     X_all = transform_dataset(df, preprocessor, feature_cols)
 
-    # 한국어 라벨 매핑
+    # 한글 레이블 매핑
     labels = {
         'age': '나이',
         'gender': '성별',
@@ -103,7 +102,7 @@ def main():
 
         if feat == 'semester':
             user_input[feat] = st.sidebar.number_input(
-                labels[labels[feat]],
+                labels[feat],
                 min_value=int(min_val),
                 max_value=int(max_val),
                 value=int(round(mean_val))
@@ -124,18 +123,17 @@ def main():
             options
         )
 
-    # 6) 유사도 조회 버튼
+    # 6) 유사도 조회
     if st.sidebar.button('🔍 유사 학생 조회'):
         input_df = pd.DataFrame([user_input])
         X_input = preprocessor.transform(input_df[feature_cols])
 
-        # 거리 계산 및 최소 거리 인덱스
+        # 거리 계산
         distances = np.linalg.norm(X_all - X_input, axis=1)
         idx = np.argmin(distances)
         similar = df.iloc[idx]
 
         st.subheader('👤 가장 유사한 학생 정보')
-        # 관심 있는 컬럼만 표시 (원하면 더 추가)
         st.write({
             '이전 GPA': similar['previous_gpa'],
             '출석률(%)': similar['attendance_percentage'],

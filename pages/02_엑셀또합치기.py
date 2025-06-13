@@ -94,7 +94,7 @@ if uploaded_files:
     target_wb.save(output)
     output.seek(0)
 
-    filename = f"{first_base} ({count}개 병합)_ {date_str}.xlsx"
+    filename = f"{first_base} ({count}개 병합).xlsx"
     st.success(f"{count}개의 파일이 완전 보존되어 병합되었습니다!")
     st.download_button(
         label="엑셀로 다운로드",

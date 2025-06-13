@@ -24,8 +24,8 @@ if uploaded_files:
     # 첫번째 파일명(확장자 제외)
     first_base = uploaded_files[0].name.rsplit('.', 1)[0]
     count = len(uploaded_files)
-    # 오늘 날짜 MM.DD 형식
-    date_str = datetime.now().strftime("%m.%d")
+    # 오늘 날짜 MMDD 형식으로
+    date_str = datetime.now().strftime("%m%d")
 
     # 새 워크북 생성, 기본 시트 제거
     target_wb = Workbook()
@@ -33,7 +33,6 @@ if uploaded_files:
 
     for uploaded_file in uploaded_files:
         try:
-            # 스타일 포함 로드
             src_wb = load_workbook(uploaded_file, data_only=False)
             src = src_wb[src_wb.sheetnames[0]]
             title = sanitize_sheet_name(uploaded_file.name.rsplit('.', 1)[0])
@@ -96,8 +95,8 @@ if uploaded_files:
     target_wb.save(output)
     output.seek(0)
 
-    # “첫번째파일명 파일수 (병합)_오늘날짜MM.DD.xlsx”
-    filename = f"{first_base} ({count}개 병합)_{date_str}.xlsx"
+    # “첫번째파일명 파일수 (병합)_오늘날짜MMDD.xlsx”
+    filename = f"{first_base} {count} (병합)_{date_str}.xlsx"
     st.success(f"{count}개의 파일이 완전 보존되어 병합되었습니다!")
     st.download_button(
         label="엑셀로 다운로드",

@@ -10,3 +10,4 @@ openai
 python-dotenv
 pytube
 openai-whisper
+ffmpeg

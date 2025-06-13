@@ -3,18 +3,18 @@ from youtube_transcript_api import YouTubeTranscriptApi, TranscriptsDisabled
 from youtube_transcript_api._errors import RequestBlocked
 from pptx import Presentation
 from pptx.util import Inches
+from googleapiclient.discovery import build
+from googleapiclient.errors import HttpError
+import openai
 import re
 import tempfile
 import os
-from googleapiclient.discovery import build
-import openai
 
-# 🔧 설정 (각자 키 입력 필요)
+# 🔑 API 키 설정 (본인의 키로 교체)
 YOUTUBE_API_KEY = "YOUR_YOUTUBE_API_KEY"
 openai.api_key = "YOUR_OPENAI_API_KEY"
 
-# 유틸 함수들 ------------------
-
+# --------------------------------------
 def extract_video_id(url):
     regex = r"(?:v=|\/)([0-9A-Za-z_-]{11}).*"
     match = re.search(regex, url)
@@ -32,24 +32,18 @@ def get_transcript(video_id):
         return None
 
 def get_video_metadata(video_id):
-    youtube = build("youtube", "v3", developerKey=YOUTUBE_API_KEY)
-    request = youtube.videos().list(part="snippet", id=video_id)
-    response = request.execute()
-    
-    if not response["items"]:
-        return None, None
-    item = response["items"][0]["snippet"]
-    return item["title"], item.get("description", "")
+    try:
+        youtube = build("youtube", "v3", developerKey=YOUTUBE_API_KEY)
+        request = youtube.videos().list(part="snippet", id=video_id)
+        response = request.execute()
 
-def summarize_with_gpt(text, lang="ko"):
-    prompt = f"다음 유튜브 영상 소개 내용을 기반으로 주요 내용을 {lang}로 슬라이드처럼 요약해줘:\n\n{text}\n\n요약:"
-    response = openai.ChatCompletion.create(
-        model="gpt-3.5-turbo",  # 또는 gpt-4 사용 가능
-        messages=[{"role": "user", "content": prompt}],
-        max_tokens=600,
-        temperature=0.7
-    )
-    return response.choices[0].message.content.strip()
+        if not response["items"]:
+            return None, None
+        item = response["items"][0]["snippet"]
+        return item["title"], item.get("description", "")
+    except HttpError as e:
+        print(f"[YouTube API Error] {e}")
+        return None, None
 
 def summarize_text(text, max_chars=800):
     sentences = text.split('. ')
@@ -65,10 +59,24 @@ def summarize_text(text, max_chars=800):
         chunks.append(current_chunk.strip())
     return chunks
 
+def summarize_with_gpt(text, lang="ko"):
+    prompt = f"다음 유튜브 영상 소개 내용을 기반으로 주요 내용을 {lang}로 슬라이드처럼 요약해줘:\n\n{text}\n\n요약:"
+    try:
+        response = openai.ChatCompletion.create(
+            model="gpt-3.5-turbo",
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=600,
+            temperature=0.7
+        )
+        return response.choices[0].message.content.strip()
+    except Exception as e:
+        print(f"[GPT Error] {e}")
+        return "GPT 요약에 실패했습니다."
+
 def create_ppt(youtube_url, title, summaries):
     prs = Presentation()
 
-    # 첫 슬라이드 (유튜브 링크)
+    # 첫 슬라이드
     slide_layout = prs.slide_layouts[0]
     slide = prs.slides.add_slide(slide_layout)
     slide.shapes.title.text = title or "YouTube Summary Presentation"
@@ -85,45 +93,54 @@ def create_ppt(youtube_url, title, summaries):
     prs.save(tmp_file.name)
     return tmp_file.name
 
-# Streamlit UI ------------------
-
-st.title("🎥 유튜브 영상 요약 PPT 생성기")
+# --------------------------------------
+# Streamlit UI
+st.set_page_config(page_title="유튜브 요약 PPT 생성기")
+st.title("🎞️ 유튜브 영상 요약 PPT 생성기")
 
 youtube_url = st.text_input("유튜브 링크를 입력하세요")
 
-if st.button("PPT 만들기"):
+if st.button("📄 PPT 만들기"):
     if not youtube_url:
         st.warning("유튜브 링크를 입력해주세요.")
+        st.stop()
+
+    video_id = extract_video_id(youtube_url)
+    if not video_id:
+        st.error("유효한 유튜브 링크가 아닙니다.")
+        st.stop()
+
+    with st.spinner("1단계: 유튜브 영상 정보 확인 중..."):
+        title, description = get_video_metadata(video_id)
+        if title is None:
+            st.error("YouTube API 요청 실패 - API 키 확인 또는 영상 권한 확인 필요.")
+            st.stop()
+
+    with st.spinner("2단계: 자막 정보 가져오는 중..."):
+        transcript = get_transcript(video_id)
+
+    if transcript == "BLOCKED" or transcript is None:
+        st.warning("자막이 없거나 차단되어 GPT로 요약합니다.")
+        if not description:
+            st.error("영상 설명이 없어 요약이 불가능합니다.")
+            st.stop()
+        with st.spinner("GPT 요약 생성 중..."):
+            summary_text = summarize_with_gpt(description)
+            summaries = summary_text.split("\n")
     else:
-        video_id = extract_video_id(youtube_url)
-        if not video_id:
-            st.error("유효한 유튜브 링크가 아닙니다.")
-        else:
-            st.info("1단계: 자막 정보 확인 중...")
-            transcript = get_transcript(video_id)
+        with st.spinner("자막 기반 요약 생성 중..."):
+            summaries = summarize_text(transcript)
 
-            title, description = get_video_metadata(video_id)
+    with st.spinner("3단계: PPT 생성 중..."):
+        ppt_path = create_ppt(youtube_url, title, summaries)
 
-            if transcript == "BLOCKED" or transcript is None:
-                st.warning("자막을 가져올 수 없어 GPT로 요약합니다.")
-                if not description:
-                    st.error("영상 설명 정보도 없어 요약이 불가능합니다.")
-                else:
-                    st.info("GPT 요약 중...")
-                    summary_text = summarize_with_gpt(description)
-                    summaries = summary_text.split("\n")
-            else:
-                st.info("자막을 기반으로 요약 생성 중...")
-                summaries = summarize_text(transcript)
+    with open(ppt_path, "rb") as f:
+        st.success("🎉 PPT 생성 완료!")
+        st.download_button(
+            label="📥 PPT 다운로드",
+            data=f,
+            file_name="youtube_summary.pptx",
+            mime="application/vnd.openxmlformats-officedocument.presentationml.presentation"
+        )
 
-            ppt_path = create_ppt(youtube_url, title, summaries)
-
-            with open(ppt_path, "rb") as f:
-                st.success("PPT 생성 완료!")
-                st.download_button(
-                    label="📥 PPT 다운로드",
-                    data=f,
-                    file_name="youtube_summary.pptx",
-                    mime="application/vnd.openxmlformats-officedocument.presentationml.presentation"
-                )
-            os.remove(ppt_path)
+    os.remove(ppt_path)

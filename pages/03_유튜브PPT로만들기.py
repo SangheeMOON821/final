@@ -1,103 +1,99 @@
 import streamlit as st
 from pytube import YouTube
 from youtube_transcript_api import YouTubeTranscriptApi, TranscriptsDisabled, NoTranscriptAvailable
-from pptx import Presentation
-from pptx.util import Inches
 from urllib.parse import urlparse, parse_qs
-import textwrap
-import os
 import whisper
+import os
 
+# 1) 유튜브 video_id 추출
 def extract_video_id(url):
-    parsed_url = urlparse(url)
-    if parsed_url.hostname in ["www.youtube.com", "youtube.com"]:
-        return parse_qs(parsed_url.query).get("v", [None])[0]
-    elif parsed_url.hostname == "youtu.be":
-        return parsed_url.path[1:]
+    parsed = urlparse(url)
+    if parsed.hostname in ["www.youtube.com", "youtube.com"]:
+        return parse_qs(parsed.query).get("v", [None])[0]
+    if parsed.hostname == "youtu.be":
+        return parsed.path[1:]
     return None
 
+# 2) 공개 자막 가져오기
 def get_youtube_transcript(video_id):
     try:
-        # 가능한 자막 언어 리스트 가져오기
-        transcript_list = YouTubeTranscriptApi.list_transcripts(video_id)
-        transcript = transcript_list.find_transcript(['ko', 'en'])
-        return " ".join([t["text"] for t in transcript.fetch()])
+        transcripts = YouTubeTranscriptApi.list_transcripts(video_id)
+        tr = transcripts.find_transcript(['ko','en'])
+        return " ".join([seg["text"] for seg in tr.fetch()])
     except (TranscriptsDisabled, NoTranscriptAvailable):
         return None
-    except Exception as e:
+    except:
         return None
 
-def download_audio_from_youtube(video_url, output_path="audio.mp4"):
+# 3) Whisper로 음성 다운로드 및 인식
+def download_audio(video_url, fname="audio.mp4"):
     yt = YouTube(video_url)
     stream = yt.streams.filter(only_audio=True).first()
-    stream.download(filename=output_path)
-    return output_path
+    return stream.download(filename=fname)
 
-def transcribe_audio_whisper(audio_path):
-    model = whisper.load_model("base")  # 필요한 경우 'small', 'medium', 'large' 등도 가능
-    result = model.transcribe(audio_path, language='ko')
-    return result["text"]
+def transcribe_whisper(audio_path):
+    model = whisper.load_model("base")
+    res = model.transcribe(audio_path, language='ko')
+    return res["text"]
 
-def summarize_text(text, max_sentences=5):
-    sentences = text.split(". ")
-    return ". ".join(sentences[:max_sentences]) + ("." if sentences else "")
+# 4) 스크립트를 n개 섹션으로 분할
+def split_to_sections(text, n):
+    sentences = [s.strip() for s in text.split('. ') if s]
+    size = len(sentences) // n
+    sections = []
+    for i in range(n):
+        start = i*size
+        end = (i+1)*size if i < n-1 else len(sentences)
+        chunk = ". ".join(sentences[start:end])
+        if not chunk.endswith("."):
+            chunk += "."
+        sections.append(chunk)
+    return sections
 
-def split_summary(summary, max_length=500):
-    return textwrap.wrap(summary, width=max_length)
+# 5) 각 섹션에서 한 문장으로 제목 생성
+def summarize_title(chunk):
+    # 맨 앞 문장을 제목으로 사용하거나, 간단 요약
+    first = chunk.split(".")[0]
+    return first[:50] + "..." if len(first) > 50 else first
 
-def create_ppt(youtube_url, summary_chunks):
-    prs = Presentation()
-
-    # 첫 슬라이드: 링크 정보
-    slide = prs.slides.add_slide(prs.slide_layouts[0])
-    title = slide.shapes.title
-    subtitle = slide.placeholders[1]
-    title.text = "YouTube 영상 요약"
-    subtitle.text = youtube_url
-
-    # 요약 슬라이드들
-    for i, chunk in enumerate(summary_chunks):
-        slide = prs.slides.add_slide(prs.slide_layouts[1])
-        title = slide.shapes.title
-        content = slide.placeholders[1]
-        title.text = f"요약 {i+1}"
-        content.text = chunk
-
-    return prs
-
-st.title("📺 유튜브 영상으로 PPT 요약 만들기")
+# Streamlit UI
+st.title("📑 YouTube 스크립트 구조화 뷰어")
 
 youtube_url = st.text_input("유튜브 링크를 입력하세요:")
 
 if youtube_url:
-    video_id = extract_video_id(youtube_url)
-    if not video_id:
-        st.error("유효한 유튜브 링크가 아닙니다.")
-    else:
-        st.info("자막 확인 중입니다...")
-        transcript_text = get_youtube_transcript(video_id)
+    vid = extract_video_id(youtube_url)
+    if not vid:
+        st.error("❌ 유효한 유튜브 링크가 아닙니다.")
+        st.stop()
 
-        if transcript_text is None:
-            st.warning("자막이 없습니다. Whisper로 음성을 인식 중입니다...")
-            audio_path = download_audio_from_youtube(youtube_url)
-            transcript_text = transcribe_audio_whisper(audio_path)
-            os.remove(audio_path)
-            st.success("Whisper로 자막 생성 완료!")
+    st.info("자막 확인 중…")
+    script = get_youtube_transcript(vid)
 
-        summary = summarize_text(transcript_text, max_sentences=15)
-        summary_chunks = split_summary(summary)
+    if script is None:
+        st.warning("자막 없음 → Whisper로 인식 중…")
+        audio_file = download_audio(youtube_url)
+        script = transcribe_whisper(audio_file)
+        os.remove(audio_file)
+        st.success("Whisper 인식 완료!")
 
-        prs = create_ppt(youtube_url, summary_chunks)
+    # 섹션 개수 선택
+    n_sec = st.sidebar.number_input("섹션 개수", min_value=2, max_value=10, value=5, step=1)
 
-        output_path = "youtube_summary.pptx"
-        prs.save(output_path)
+    # 분할 & 제목 생성
+    secs = split_to_sections(script, n_sec)
+    titles = [summarize_title(s) for s in secs]
 
-        with open(output_path, "rb") as f:
-            st.download_button(
-                label="📥 PPT 다운로드",
-                data=f,
-                file_name="youtube_summary.pptx",
-                mime="application/vnd.openxmlformats-officedocument.presentationml.presentation"
-            )
+    # 사이드바에 목차 표시
+    choice = st.sidebar.radio("목차", titles)
 
-        os.remove(output_path)
+    # 선택된 섹션 인덱스
+    idx = titles.index(choice)
+
+    # 본문에 보여주기
+    st.header(choice)
+    st.write(secs[idx])
+
+    # 전체 스크립트는 확장(expander)으로
+    with st.expander("👉 전체 스크립트 보기"):
+        st.write(script)

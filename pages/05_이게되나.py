@@ -73,7 +73,37 @@ def main():
     preprocessor = create_preprocessor(df, numeric_features, categorical_features)
     X_all = transform_dataset(df, preprocessor, feature_cols)
 
-    labels = { ... }  # 이전 매핑 유지
+    labels = {
+        'age': '나이',
+        'gender': '성별',
+        'major': '전공',
+        'study_hours_per_day': '하루 공부 시간(시간)',
+        'social_media_hours': '하루 소셜 미디어 사용(시간)',
+        'netflix_hours': '하루 넷플릭스 시청(시간)',
+        'part_time_job': '아르바이트 여부',
+        'attendance_percentage': '출석률(%)',
+        'sleep_hours': '하루 수면 시간(시간)',
+        'diet_quality': '식단 질',
+        'exercise_frequency': '운동 빈도(주당 횟수)',
+        'parental_education_level': '부모 교육 수준',
+        'internet_quality': '인터넷 품질',
+        'mental_health_rating': '정신 건강 평가(1-10)',
+        'extracurricular_participation': '과외 활동 참여',
+        'previous_gpa': '이전 학기 GPA',
+        'semester': '학기',
+        'stress_level': '스트레스 수준',
+        'dropout_risk': '퇴학 위험 여부',
+        'social_activity': '사회 활동 수준',
+        'screen_time': '화면 사용 시간(시간)',
+        'study_environment': '학습 환경',
+        'access_to_tutoring': '튜터링 접근성',
+        'family_income_range': '가족 소득 범위',
+        'parental_support_level': '부모 지원 수준',
+        'motivation_level': '동기 수준',
+        'exam_anxiety_score': '시험 불안 점수',
+        'learning_style': '학습 스타일',
+        'time_management_score': '시간 관리 점수'
+    }
     st.sidebar.header('🎯 학생 특성 입력')
     user_input = {}
 

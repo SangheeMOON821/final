@@ -8,7 +8,6 @@ from sklearn.compose import ColumnTransformer
 @st.cache_data
 def load_data():
     df = pd.read_csv('enhanced_student_habits_performance_dataset.csv')
-    # 수치형 칼럼을 명시적으로 숫자형으로 변환
     numeric_cols = [
         'age', 'study_hours_per_day', 'social_media_hours', 'netflix_hours',
         'attendance_percentage', 'sleep_hours', 'exercise_frequency',
@@ -17,7 +16,9 @@ def load_data():
         'parental_support_level', 'motivation_level', 'exam_anxiety_score',
         'time_management_score'
     ]
+    # 수치형 결측값을 중앙값으로 채움
     df[numeric_cols] = df[numeric_cols].apply(pd.to_numeric, errors='coerce')
+    df[numeric_cols] = df[numeric_cols].fillna(df[numeric_cols].median())
     return df
 
 # 2) 캐시된 전처리 파이프라인 생성
@@ -39,15 +40,17 @@ def create_preprocessor(df, numeric_features, categorical_features):
     preprocessor.fit(df_copy)
     return preprocessor
 
-# 3) 데이터 변환 (캐시 제거)
+# 3) 데이터 변환
 def transform_dataset(df, preprocessor, feature_cols):
     df_copy = df[feature_cols].copy()
-    # 수치형은 to_numeric, 범주형은 str
     num_feats = preprocessor.transformers_[0][2]
-    df_copy[num_feats] = df_copy[num_feats].apply(pd.to_numeric, errors='coerce')
     cat_feats = preprocessor.transformers_[1][2]
+    df_copy[num_feats] = df_copy[num_feats].apply(pd.to_numeric, errors='coerce')
     df_copy[cat_feats] = df_copy[cat_feats].astype(str)
-    return preprocessor.transform(df_copy)
+    X = preprocessor.transform(df_copy)
+    # 변환 결과 결측치는 0으로 대체
+    X = np.nan_to_num(X, nan=0.0, posinf=np.inf, neginf=-np.inf)
+    return X
 
 
 def main():
@@ -122,10 +125,11 @@ def main():
         input_df = pd.DataFrame([user_input])
         input_df[numeric_features] = input_df[numeric_features].apply(pd.to_numeric, errors='coerce')
         input_df[categorical_features] = input_df[categorical_features].astype(str)
-        X_input = preprocessor.transform(input_df[feature_cols])
+        X_input = transform_dataset(input_df, preprocessor, feature_cols)
 
         distances = np.linalg.norm(X_all - X_input, axis=1)
-        idx = np.nanargmin(distances)
+        distances = np.nan_to_num(distances, nan=np.inf, posinf=np.inf, neginf=np.inf)
+        idx = np.argmin(distances)
         similar = df.iloc[idx]
 
         st.subheader('👤 가장 유사한 학생 정보')

@@ -1,8 +1,12 @@
+# 필요한 라이브러리 설치:
+# pip install streamlit pytube youtube-transcript-api openai-whisper yt-dlp
+# sudo apt install ffmpeg
+
 import streamlit as st
-from pytube import YouTube
 from youtube_transcript_api import YouTubeTranscriptApi, TranscriptsDisabled
 from urllib.parse import urlparse, parse_qs
 import whisper
+import yt_dlp
 import os
 
 # 1) YouTube URL에서 video_id 추출
@@ -21,21 +25,25 @@ def get_youtube_transcript(video_id):
         transcript = transcripts.find_transcript(['ko', 'en'])
         return " ".join([seg["text"] for seg in transcript.fetch()])
     except TranscriptsDisabled:
-        # 업로더가 자막을 비활성화한 경우
         return None
     except Exception:
-        # 자막 없음 혹은 기타 에러
         return None
 
-# 3) 오디오 다운로드 (Whisper용)
+# 3) 오디오 다운로드 (yt-dlp 사용)
 def download_audio(video_url, fname="audio.mp4"):
-    yt = YouTube(video_url)
-    stream = yt.streams.filter(only_audio=True).first()
-    return stream.download(filename=fname)
+    ydl_opts = {
+        'format': 'bestaudio/best',
+        'outtmpl': fname,
+        'quiet': True,
+        'noplaylist': True,
+    }
+    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        ydl.download([video_url])
+    return fname
 
-# 4) Whisper로 음성 → 텍스트
+# 4) Whisper로 음성 → 텍스트 변환
 def transcribe_whisper(audio_path):
-    model = whisper.load_model("base")  # 필요에 따라 'small', 'medium' 등 선택
+    model = whisper.load_model("base")
     res = model.transcribe(audio_path, language='ko')
     return res["text"]
 
@@ -58,7 +66,7 @@ def summarize_title(chunk):
     first = chunk.split(".")[0]
     return (first[:50] + "...") if len(first) > 50 else first
 
-# Streamlit UI 구성
+# Streamlit UI
 st.title("📑 YouTube 스크립트 구조화 뷰어")
 
 youtube_url = st.text_input("유튜브 링크를 입력하세요:")
@@ -73,7 +81,7 @@ if youtube_url:
     script = get_youtube_transcript(vid)
 
     if script is None:
-        st.warning("자막이 없거나 접근 불가 → Whisper로 인식 중…")
+        st.warning("자막 없음 → Whisper로 인식 중…")
         audio_file = download_audio(youtube_url)
         script = transcribe_whisper(audio_file)
         os.remove(audio_file)

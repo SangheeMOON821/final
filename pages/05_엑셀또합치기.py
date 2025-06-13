@@ -2,6 +2,7 @@ import streamlit as st
 from io import BytesIO
 import re
 from openpyxl import load_workbook, Workbook
+from copy import copy
 
 st.title("엑셀 파일 → 시트 병합기 (스타일 보존)")
 
@@ -18,17 +19,15 @@ def sanitize_sheet_name(name):
 
 if uploaded_files:
     output = BytesIO()
-    # 새 워크북 생성 후 기본 시트는 삭제
+    # 새 워크북 생성 후 기본 시트 제거
     target_wb = Workbook()
     target_wb.remove(target_wb.active)
 
     for uploaded_file in uploaded_files:
         try:
-            # 원본 파일 로드 (스타일 정보 포함)
             source_wb = load_workbook(uploaded_file, data_only=False)
-            # 첫 번째 시트만 복제하고 싶다면 아래처럼; 전체 시트를 복제하려면 for sheet in source_wb.worksheets 로 변경
-            source_sheet = source_wb[source_wb.sheetnames[0]]  
-            # 파일 이름을 기반으로 시트명 생성
+            # 첫 번째 시트만 복제
+            source_sheet = source_wb[source_wb.sheetnames[0]]
             base_name = uploaded_file.name.rsplit('.', 1)[0]
             sheet_name = sanitize_sheet_name(base_name)
             ws = target_wb.create_sheet(title=sheet_name)
@@ -49,22 +48,23 @@ if uploaded_files:
             # Freeze panes 복사
             ws.freeze_panes = source_sheet.freeze_panes
 
-            # 각 셀 복사 (값 + 스타일)
+            # 셀 값·스타일 복사
             for row in source_sheet.iter_rows():
                 for cell in row:
                     new_cell = ws.cell(row=cell.row, column=cell.column, value=cell.value)
                     if cell.has_style:
-                        new_cell.font = cell.font
-                        new_cell.border = cell.border
-                        new_cell.fill = cell.fill
+                        new_cell.font = copy(cell.font)
+                        new_cell.border = copy(cell.border)
+                        new_cell.fill = copy(cell.fill)
+                        # number_format은 문자열이므로 바로 할당해도 무방
                         new_cell.number_format = cell.number_format
-                        new_cell.protection = cell.protection
-                        new_cell.alignment = cell.alignment
+                        new_cell.protection = copy(cell.protection)
+                        new_cell.alignment = copy(cell.alignment)
 
         except Exception as e:
             st.error(f"{uploaded_file.name} 읽기 실패: {e}")
 
-    # 저장
+    # 결과 저장
     target_wb.save(output)
     output.seek(0)
 

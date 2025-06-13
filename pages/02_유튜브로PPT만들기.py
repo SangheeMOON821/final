@@ -9,10 +9,14 @@ import openai
 import re
 import tempfile
 import os
+from dotenv import load_dotenv  # ✅ dotenv 추가
 
-# 🔑 API 키 설정 (본인의 키로 교체)
-YOUTUBE_API_KEY = "YOUR_YOUTUBE_API_KEY"
-openai.api_key = "YOUR_OPENAI_API_KEY"
+# ✅ .env 파일 로드
+load_dotenv()
+
+# ✅ 환경변수에서 API 키 불러오기
+YOUTUBE_API_KEY = os.getenv("AIzaSyCiOYEp0EsDCRl2xn5exfxpJyv78SJfIOQ")
+openai.api_key = os.getenv("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")
 
 # --------------------------------------
 def extract_video_id(url):
@@ -42,7 +46,7 @@ def get_video_metadata(video_id):
         item = response["items"][0]["snippet"]
         return item["title"], item.get("description", "")
     except HttpError as e:
-        print(f"[YouTube API Error] {e}")
+        st.error(f"[YouTube API Error] {e}")
         return None, None
 
 def summarize_text(text, max_chars=800):
@@ -76,13 +80,11 @@ def summarize_with_gpt(text, lang="ko"):
 def create_ppt(youtube_url, title, summaries):
     prs = Presentation()
 
-    # 첫 슬라이드
     slide_layout = prs.slide_layouts[0]
     slide = prs.slides.add_slide(slide_layout)
     slide.shapes.title.text = title or "YouTube Summary Presentation"
     slide.placeholders[1].text = f"Link: {youtube_url}"
 
-    # 요약 슬라이드들
     content_layout = prs.slide_layouts[1]
     for idx, summary in enumerate(summaries, start=1):
         slide = prs.slides.add_slide(content_layout)
@@ -94,7 +96,6 @@ def create_ppt(youtube_url, title, summaries):
     return tmp_file.name
 
 # --------------------------------------
-# Streamlit UI
 st.set_page_config(page_title="유튜브 요약 PPT 생성기")
 st.title("🎞️ 유튜브 영상 요약 PPT 생성기")
 

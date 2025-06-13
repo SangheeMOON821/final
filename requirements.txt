@@ -5,11 +5,11 @@ seaborn
 openpyxl
 youtube-transcript-api
 python-pptx
-google-api-python-client 
+google-api-python-client
 openai
 python-dotenv
 pytube
 openai-whisper
-ffmpeg
+-ffmpeg
++imageio-ffmpeg
 yt-dlp
-imageio-ffmpeg

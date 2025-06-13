@@ -8,3 +8,5 @@ python-pptx
 google-api-python-client 
 openai
 python-dotenv
+pytube
+openai-whisper

@@ -11,3 +11,4 @@ python-dotenv
 pytube
 openai-whisper
 ffmpeg
+yt-dlp

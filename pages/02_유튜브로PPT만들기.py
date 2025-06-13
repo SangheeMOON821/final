@@ -1,27 +1,57 @@
 import streamlit as st
 from youtube_transcript_api import YouTubeTranscriptApi, TranscriptsDisabled
+from youtube_transcript_api._errors import RequestBlocked
 from pptx import Presentation
 from pptx.util import Inches
 import re
 import tempfile
 import os
+from googleapiclient.discovery import build
+import openai
+
+# 🔧 설정 (각자 키 입력 필요)
+YOUTUBE_API_KEY = "YOUR_YOUTUBE_API_KEY"
+openai.api_key = "YOUR_OPENAI_API_KEY"
+
+# 유틸 함수들 ------------------
 
 def extract_video_id(url):
-    """유튜브 URL에서 비디오 ID 추출"""
     regex = r"(?:v=|\/)([0-9A-Za-z_-]{11}).*"
     match = re.search(regex, url)
     return match.group(1) if match else None
 
 def get_transcript(video_id):
-    """유튜브 자막 추출"""
     try:
         transcript = YouTubeTranscriptApi.get_transcript(video_id)
         return " ".join([item["text"] for item in transcript])
     except TranscriptsDisabled:
         return None
+    except RequestBlocked:
+        return "BLOCKED"
+    except Exception:
+        return None
+
+def get_video_metadata(video_id):
+    youtube = build("youtube", "v3", developerKey=YOUTUBE_API_KEY)
+    request = youtube.videos().list(part="snippet", id=video_id)
+    response = request.execute()
+    
+    if not response["items"]:
+        return None, None
+    item = response["items"][0]["snippet"]
+    return item["title"], item.get("description", "")
+
+def summarize_with_gpt(text, lang="ko"):
+    prompt = f"다음 유튜브 영상 소개 내용을 기반으로 주요 내용을 {lang}로 슬라이드처럼 요약해줘:\n\n{text}\n\n요약:"
+    response = openai.ChatCompletion.create(
+        model="gpt-3.5-turbo",  # 또는 gpt-4 사용 가능
+        messages=[{"role": "user", "content": prompt}],
+        max_tokens=600,
+        temperature=0.7
+    )
+    return response.choices[0].message.content.strip()
 
 def summarize_text(text, max_chars=800):
-    """긴 자막 텍스트를 일정 길이 단위로 나눠 요약"""
     sentences = text.split('. ')
     chunks = []
     current_chunk = ""
@@ -35,30 +65,29 @@ def summarize_text(text, max_chars=800):
         chunks.append(current_chunk.strip())
     return chunks
 
-def create_ppt(youtube_url, summaries):
-    """PPT 파일 생성"""
+def create_ppt(youtube_url, title, summaries):
     prs = Presentation()
 
     # 첫 슬라이드 (유튜브 링크)
-    slide_layout = prs.slide_layouts[0]  # 타이틀 슬라이드
+    slide_layout = prs.slide_layouts[0]
     slide = prs.slides.add_slide(slide_layout)
-    slide.shapes.title.text = "YouTube Summary Presentation"
+    slide.shapes.title.text = title or "YouTube Summary Presentation"
     slide.placeholders[1].text = f"Link: {youtube_url}"
 
     # 요약 슬라이드들
-    content_layout = prs.slide_layouts[1]  # 제목 + 콘텐츠
+    content_layout = prs.slide_layouts[1]
     for idx, summary in enumerate(summaries, start=1):
         slide = prs.slides.add_slide(content_layout)
         slide.shapes.title.text = f"요약 {idx}"
         slide.placeholders[1].text = summary
 
-    # 임시 파일로 저장
     tmp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".pptx")
     prs.save(tmp_file.name)
     return tmp_file.name
 
-# ---------------- Streamlit UI ----------------
-st.title("YouTube 영상 요약 PPT 생성기")
+# Streamlit UI ------------------
+
+st.title("🎥 유튜브 영상 요약 PPT 생성기")
 
 youtube_url = st.text_input("유튜브 링크를 입력하세요")
 
@@ -70,22 +99,31 @@ if st.button("PPT 만들기"):
         if not video_id:
             st.error("유효한 유튜브 링크가 아닙니다.")
         else:
-            with st.spinner("자막 추출 중..."):
-                transcript = get_transcript(video_id)
+            st.info("1단계: 자막 정보 확인 중...")
+            transcript = get_transcript(video_id)
 
-            if transcript is None:
-                st.error("이 영상에는 자막이 없거나, 접근할 수 없습니다.")
+            title, description = get_video_metadata(video_id)
+
+            if transcript == "BLOCKED" or transcript is None:
+                st.warning("자막을 가져올 수 없어 GPT로 요약합니다.")
+                if not description:
+                    st.error("영상 설명 정보도 없어 요약이 불가능합니다.")
+                else:
+                    st.info("GPT 요약 중...")
+                    summary_text = summarize_with_gpt(description)
+                    summaries = summary_text.split("\n")
             else:
-                with st.spinner("내용 요약 및 PPT 생성 중..."):
-                    summaries = summarize_text(transcript)
-                    ppt_file_path = create_ppt(youtube_url, summaries)
+                st.info("자막을 기반으로 요약 생성 중...")
+                summaries = summarize_text(transcript)
 
-                with open(ppt_file_path, "rb") as f:
-                    st.success("PPT 생성 완료!")
-                    st.download_button(
-                        label="PPT 다운로드",
-                        data=f,
-                        file_name="youtube_summary.pptx",
-                        mime="application/vnd.openxmlformats-officedocument.presentationml.presentation"
-                    )
-                os.remove(ppt_file_path)
+            ppt_path = create_ppt(youtube_url, title, summaries)
+
+            with open(ppt_path, "rb") as f:
+                st.success("PPT 생성 완료!")
+                st.download_button(
+                    label="📥 PPT 다운로드",
+                    data=f,
+                    file_name="youtube_summary.pptx",
+                    mime="application/vnd.openxmlformats-officedocument.presentationml.presentation"
+                )
+            os.remove(ppt_path)
